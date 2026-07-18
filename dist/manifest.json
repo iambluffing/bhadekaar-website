@@ -1,0 +1,26 @@
+{
+  "short_name": "BhadeKaar",
+  "name": "BhadeKaar - Commercial Goods Transport Goa",
+  "description": "Book commercial goods transport vehicles in Goa, India. Tata Ace, Pickup, Mini Truck, Tempo, 17/19ft Trucks & Construction Material Vehicles.",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "categories": ["logistics", "business", "transportation"]
+}
