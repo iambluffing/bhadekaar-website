@@ -1,4 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { db } from '../config/firebase';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
 
 export interface VehicleItem {
   id: string;
@@ -10,7 +19,7 @@ export interface VehicleItem {
   baseFare: number;
   description: string;
   suitableFor: string;
-  active: boolean; // Toggle state for admin control
+  active: boolean;
 }
 
 export interface ServiceItem {
@@ -18,7 +27,7 @@ export interface ServiceItem {
   title: string;
   sub: string;
   badge: string;
-  active: boolean; // Toggle state
+  active: boolean;
 }
 
 export interface DriverDoc {
@@ -59,11 +68,11 @@ interface DataContextType {
   services: ServiceItem[];
   driverApplications: DriverApplication[];
   vendors: VendorItem[];
-  toggleVehicle: (id: string) => void;
-  toggleService: (id: string) => void;
-  toggleVendor: (id: string) => void;
-  addDriverApplication: (app: Omit<DriverApplication, 'id' | 'submittedAt' | 'status'>) => void;
-  updateDriverStatus: (id: string, status: 'pending' | 'approved' | 'rejected') => void;
+  toggleVehicle: (id: string) => Promise<void>;
+  toggleService: (id: string) => Promise<void>;
+  toggleVendor: (id: string) => Promise<void>;
+  addDriverApplication: (app: Omit<DriverApplication, 'id' | 'submittedAt' | 'status'>) => Promise<void>;
+  updateDriverStatus: (id: string, status: 'pending' | 'approved' | 'rejected') => Promise<void>;
 }
 
 const initialVehicles: VehicleItem[] = [
@@ -227,6 +236,68 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Sync with Firestore if available, with LocalStorage fallback
+  useEffect(() => {
+    if (!db) return;
+
+    // Listen to Vehicles collection
+    const unsubscribeVehicles = onSnapshot(collection(db, 'vehicles'), (snapshot) => {
+      if (!snapshot.empty) {
+        const fetched = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as VehicleItem));
+        setVehicles(fetched);
+        localStorage.setItem('bhadekaar_vehicles', JSON.stringify(fetched));
+      } else {
+        // Populate initial defaults in Firestore
+        initialVehicles.forEach((v) => {
+          setDoc(doc(db, 'vehicles', v.id), v).catch(() => {});
+        });
+      }
+    }, () => {});
+
+    // Listen to Services collection
+    const unsubscribeServices = onSnapshot(collection(db, 'services'), (snapshot) => {
+      if (!snapshot.empty) {
+        const fetched = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as ServiceItem));
+        setServices(fetched);
+        localStorage.setItem('bhadekaar_services', JSON.stringify(fetched));
+      } else {
+        initialServices.forEach((s) => {
+          setDoc(doc(db, 'services', s.id), s).catch(() => {});
+        });
+      }
+    }, () => {});
+
+    // Listen to Vendors collection
+    const unsubscribeVendors = onSnapshot(collection(db, 'vendors'), (snapshot) => {
+      if (!snapshot.empty) {
+        const fetched = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as VendorItem));
+        setVendors(fetched);
+        localStorage.setItem('bhadekaar_vendors', JSON.stringify(fetched));
+      } else {
+        initialVendors.forEach((v) => {
+          setDoc(doc(db, 'vendors', v.id), v).catch(() => {});
+        });
+      }
+    }, () => {});
+
+    // Listen to Driver Applications
+    const unsubscribeDrivers = onSnapshot(collection(db, 'driverApplications'), (snapshot) => {
+      if (!snapshot.empty) {
+        const fetched = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as DriverApplication));
+        setDriverApplications(fetched);
+        localStorage.setItem('bhadekaar_drivers', JSON.stringify(fetched));
+      }
+    }, () => {});
+
+    return () => {
+      unsubscribeVehicles();
+      unsubscribeServices();
+      unsubscribeVendors();
+      unsubscribeDrivers();
+    };
+  }, []);
+
+  // Save changes to localStorage
   useEffect(() => {
     localStorage.setItem('bhadekaar_vehicles', JSON.stringify(vehicles));
   }, [vehicles]);
@@ -243,44 +314,100 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('bhadekaar_drivers', JSON.stringify(driverApplications));
   }, [driverApplications]);
 
-  const toggleVehicle = (id: string) => {
+  const toggleVehicle = async (id: string) => {
+    const target = vehicles.find((v) => v.id === id);
+    const newActiveState = target ? !target.active : true;
+
     setVehicles((prev) =>
-      prev.map((v) => (v.id === id ? { ...v, active: !v.active } : v))
+      prev.map((v) => (v.id === id ? { ...v, active: newActiveState } : v))
     );
+
+    if (db) {
+      try {
+        await updateDoc(doc(db, 'vehicles', id), { active: newActiveState });
+      } catch {
+        // Fallback handled locally
+      }
+    }
   };
 
-  const toggleService = (id: string) => {
+  const toggleService = async (id: string) => {
+    const target = services.find((s) => s.id === id);
+    const newActiveState = target ? !target.active : true;
+
     setServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, active: !s.active } : s))
+      prev.map((s) => (s.id === id ? { ...s, active: newActiveState } : s))
     );
+
+    if (db) {
+      try {
+        await updateDoc(doc(db, 'services', id), { active: newActiveState });
+      } catch {
+        // Fallback handled locally
+      }
+    }
   };
 
-  const toggleVendor = (id: string) => {
+  const toggleVendor = async (id: string) => {
+    const target = vendors.find((v) => v.id === id);
+    const newActiveState = target ? !target.active : true;
+
     setVendors((prev) =>
-      prev.map((v) => (v.id === id ? { ...v, active: !v.active } : v))
+      prev.map((v) => (v.id === id ? { ...v, active: newActiveState } : v))
     );
+
+    if (db) {
+      try {
+        await updateDoc(doc(db, 'vendors', id), { active: newActiveState });
+      } catch {
+        // Fallback handled locally
+      }
+    }
   };
 
-  const addDriverApplication = (appData: Omit<DriverApplication, 'id' | 'submittedAt' | 'status'>) => {
+  const addDriverApplication = async (appData: Omit<DriverApplication, 'id' | 'submittedAt' | 'status'>) => {
+    const id = `DRV-${Date.now().toString().slice(-6)}`;
+    const submittedAt = new Date().toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
     const newApp: DriverApplication = {
       ...appData,
-      id: `DRV-${Date.now().toString().slice(-6)}`,
-      submittedAt: new Date().toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
+      id,
+      submittedAt,
       status: 'pending',
     };
+
     setDriverApplications((prev) => [newApp, ...prev]);
+
+    if (db) {
+      try {
+        await setDoc(doc(db, 'driverApplications', id), {
+          ...newApp,
+          createdAt: serverTimestamp(),
+        });
+      } catch {
+        // Local state fallback preserved
+      }
+    }
   };
 
-  const updateDriverStatus = (id: string, status: 'pending' | 'approved' | 'rejected') => {
+  const updateDriverStatus = async (id: string, status: 'pending' | 'approved' | 'rejected') => {
     setDriverApplications((prev) =>
       prev.map((d) => (d.id === id ? { ...d, status } : d))
     );
+
+    if (db) {
+      try {
+        await updateDoc(doc(db, 'driverApplications', id), { status });
+      } catch {
+        // Fallback handled locally
+      }
+    }
   };
 
   return (
